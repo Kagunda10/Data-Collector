@@ -64,3 +64,5 @@ def get_property_info(main_page):
             details_dict['rent_per_month'] = each.find_next_sibling().text
 
     return details_dict
+
+
