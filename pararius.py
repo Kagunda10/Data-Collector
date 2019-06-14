@@ -7,7 +7,7 @@ import logging
 # Get Links of cities in www.pararius.com
 
 logging.basicConfig(level = logging.INFO, filename = 'pararius_logs.txt')
-logging = logging.getLogger('scraper')
+logger = logging.getLogger('scraper')
 
 def get_pariarius_city_links():
     main_page = 'https://www.pararius.com/english'
