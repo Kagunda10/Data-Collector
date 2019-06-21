@@ -2,7 +2,7 @@ from urllib.request import Request, urlopen
 from bs4 import BeautifulSoup
 
 def get_jaap_city_links():
-    url = 'https://www.jaap.nl/koophuizen/'
+    url = 'https://www.jaap.nl'
     req = Request(url, headers={'User-Agent': 'Mozilla/5.0'})
     main_page_html = urlopen(req).read()
 
@@ -23,7 +23,7 @@ def get_jaap_city_links():
 
     return {'sale':city_sale_links, 'rent':city_rent_links}
         
-def get_zimmo_apartment_list():
+# def get_zimmo_apartment_list():
     
 
 print(get_jaap_city_links())

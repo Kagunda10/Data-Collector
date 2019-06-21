@@ -4,10 +4,12 @@ import re
 import csv
 import time
 import logging
+
+logging.basicConfig(level=logging.INFO, filename='pararius_logs.txt')
+logger = logging.getLogger('scraper')
+
 # Get Links of cities in www.pararius.com
 
-logging.basicConfig(level = logging.INFO, filename = 'pararius_logs.txt')
-logger = logging.getLogger('scraper')
 
 def get_pariarius_city_links():
     main_page = 'https://www.pararius.com/english'
@@ -78,23 +80,23 @@ def get_property_info(main_page):
 def main():
     csv_columns = ['City', 'Link', 'Living Area', 'Rent(pm)']
     csv_file = 'Pararius.csv'
-    # Get city links
     logger.info('Scraper Started')
     try:
         with open(csv_file, 'w') as f:
             writer = csv.DictWriter(f, fieldnames=csv_columns)
             writer.writeheader()
             for each_city in get_pariarius_city_links():
-                for each in [x for x in [y for y in get_apartment_list(each_city)]]:
+                for each in [
+                    x for x in [
+                        y for y in get_apartment_list(each_city)]]:
                     data = get_property_info(each)
                     data['City'] = each_city['City']
                     logger.info('Extracted: {}'.format(data['Link']))
                     writer.writerow(data)
     except IOError:
         print("I/O Error")
-            # time.sleep(2)    
+        # time.sleep(2)
 
-        # print([x for x in get_apartment_list(each_city)])
+
 if __name__ == "__main__":
-    # print(get_pariarius_city_links())
     main()
