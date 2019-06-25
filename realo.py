@@ -1,4 +1,3 @@
-from urllib.request import Request, urlopen
 from bs4 import BeautifulSoup
 from random_user_agent.user_agent import UserAgent
 from random_user_agent.params import SoftwareName, OperatingSystem
@@ -10,7 +9,17 @@ import csv
 import traceback
 import re
 import os
+import time
+import daiquiri
+import sys
 
+daiquiri.setup(level=logging.INFO, outputs=(
+    daiquiri.output.Stream(sys.stdout),
+    daiquiri.output.File("realo",
+                         formatter=daiquiri.formatter.JSON_FORMATTER),
+    ))
+
+logger = daiquiri.getLogger(__name__, subsystem="example")
 
 software_names = [SoftwareName.CHROME.value]
 operating_systems = [
@@ -48,17 +57,28 @@ def requests_retry_session(
     session.mount('https://', adapter)
     return session
 
+def make_request(link):
+    t0 = time.time()
+    try:
+        response = requests_retry_session().get(
+            link,
+            headers={'User-Agent': user_agent}
+        )
+        logger.info('Parsing: {}'.format(link))
+        return BeautifulSoup(response.content, 'html.parser')
+    except Exception as x:
+        print('It failed :(', x.__class__.__name__)
+    else:
+        print('It eventually worked', response.status_code)
+
+
 # get the link to cities
 # returns a dictionary containing  lists of links and city names
 
 
 def get_realo_city_links():
     main_page = 'https://www.realo.be/en'
-    req = Request(main_page, headers={'User-Agent': 'Mozilla/5.0'})
-    main_page_html = urlopen(req).read()
-
-    main_page_soup = BeautifulSoup(main_page_html, 'html.parser')
-
+    main_page_soup = make_request(main_page)
     city_houses_for_sale = []
     city_houses_for_rent = []
     for each in main_page_soup.findAll(
@@ -81,12 +101,7 @@ def get_realo_city_links():
 
 
 def get_listing_links_list(link):
-    main_page = link
-
-    req = Request(main_page, headers={'User-Agent': user_agent})
-    main_page_html = urlopen(req).read()
-
-    main_page_soup = BeautifulSoup(main_page_html, 'html.parser')
+    main_page_soup = make_request(link)
 
     results_list = []
     for each in main_page_soup.findAll(
@@ -106,14 +121,7 @@ def get_listing_links_list(link):
 
 
 def get_apartment_info(link):
-    main_page = link
-
-    s = requests.Session()
-    s.headers.update({'x-test': 'true', 'User-Agent': user_agent})
-
-    response = requests_retry_session(session=s).get(link)
-    main_page_html = response.content
-    main_page_soup = BeautifulSoup(main_page_html, 'html.parser')
+    main_page_soup = make_request(link)
 
     if link is not None:
         try:
@@ -164,15 +172,11 @@ def main():
                         writer.writerow(data)
 
     except Exception as e:
-        print('Type error: ' + str(e))
-        print(traceback.format_exc())
+        logger.info('Type error: ' + str(e))
+        logger.info(traceback.format_exc())
     #         # time.sleep(2)
 
 
 if __name__ == '__main__':
-    log_file = os.path.basename(__file__)
-    logging.basicConfig(level=logging.INFO, filename=log_file)
-    logger = logging.getLogger('scraper')
-    logger.info('Scraper Started')
-    print(log_file)
     main()
+
