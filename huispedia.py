@@ -1,16 +1,83 @@
-from urllib.request import Request, urlopen
 from bs4 import BeautifulSoup
+from random_user_agent.user_agent import UserAgent
+from random_user_agent.params import SoftwareName, OperatingSystem
+import requests
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+import logging
+import csv
+import traceback
+import re
+import os
+import time
+import daiquiri
+import sys
 
+daiquiri.setup(level=logging.INFO, outputs=(
+    daiquiri.output.Stream(sys.stdout),
+    daiquiri.output.File("realo",
+                         formatter=daiquiri.formatter.JSON_FORMATTER),
+    ))
+
+logger = daiquiri.getLogger(__name__, subsystem="example")
+
+software_names = [SoftwareName.CHROME.value]
+operating_systems = [
+    OperatingSystem.WINDOWS.value,
+    OperatingSystem.LINUX.value]
+
+user_agent_rotator = UserAgent(
+    software_names=software_names,
+    operating_systems=operating_systems,
+    limit=100)
+
+# Get list of user agents.
+user_agents = user_agent_rotator.get_user_agents()
+
+# Get Random User Agent String.
+user_agent = user_agent_rotator.get_random_user_agent()
+
+
+def requests_retry_session(
+    retries=3,
+    backoff_factor=0.3,
+    status_forcelist=(500, 502, 504),
+    session=None,
+):
+    session = session or requests.Session()
+    retry = Retry(
+        total=retries,
+        read=retries,
+        connect=retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=status_forcelist,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
+
+def make_request(link):
+    t0 = time.time()
+    try:
+        response = requests_retry_session().get(
+            link,
+            headers={'User-Agent': user_agent}
+        )
+        logger.info('Parsing: {}'.format(link))
+        return BeautifulSoup(response.content, 'html5lib')
+    except Exception as x:
+        print('It failed :(', x.__class__.__name__)
+    else:
+        print('It eventually worked', response.status_code)
 # get the link to cities
 # returns a list containing links to the cities
 
 
 def get_huispedia_city_links():
     main_page = 'https://huispedia.nl/'
-    req = Request(main_page, headers={'User-Agent': 'Mozilla/5.0'})
-    main_page_html = urlopen(req).read()
 
-    main_page_soup = BeautifulSoup(main_page_html, 'html.parser')
+    main_page_soup = make_request(main_page)
 
     footer = main_page_soup.find('footer', attrs={'class': 'footer'})
 
@@ -19,23 +86,20 @@ def get_huispedia_city_links():
     cities_list = cities_div.findAll('li')
 
     city_links = []
+    city_names = []
     for each in cities_list:
+        city_names.append(each.text)
         city_links.append(
             'https://huispedia.nl{}'.format(each.find('a').get('href')))
-    return city_links
+    return dict(zip(city_names, city_links))
 
 # Get all apartments in a given city
 # Input is the link to the cities page
 # Returns a list containing links to the apartments
 
 
-def get_apartment_list():
-    main_page = 'https://huispedia.nl/zoeken/enschede'
-    req = Request(main_page, headers={'User-Agent': 'Mozilla/5.0'})
-    main_page_html = urlopen(req).read()
-
-    main_page_soup = BeautifulSoup(main_page_html, 'html.parser')
-
+def get_apartment_list(link):
+    main_page_soup = make_request(link)
     search_results = main_page_soup.find('ul', attrs={'id': 'resultlist'})
 
     property_list = []
@@ -50,11 +114,9 @@ def get_apartment_list():
 # Returns the number of pages in the resukt set
 
 
-def get_no_of_pages(main_page):
-    req = Request(main_page, headers={'User-Agent': 'Mozilla/5.0'})
-    main_page_html = urlopen(req).read()
+def get_no_of_pages(link):
 
-    main_page_soup = BeautifulSoup(main_page_html, 'html.parser')
+    main_page_soup = make_request(link)
 
     pagination = main_page_soup.find('div', attrs={'id': 'pagination-wrapper'})
 
@@ -64,16 +126,36 @@ def get_no_of_pages(main_page):
 
     return no_of_pages
 
-# To be done get price
-
-
-def get_apartment_info():
-    main_page = 'https://huispedia.nl/amsterdam/1018tn/plantage-muidergracht/75-b'
-    req = Request(main_page, headers={'User-Agent': 'Mozilla/5.0'})
-    main_page_html = urlopen(req).read()
-
-    main_page_soup = BeautifulSoup(main_page_html, 'html.parser')
+def get_apartment_info(link):
+    main_page_soup = make_request(link)
+    price=main_page_soup.find('div', attrs={'class':'price-indication-main-container'}).span
     living_area = main_page_soup.find('div', attrs={
                                       'id': 'feature-big-woonoppervlak'}).find('div', attrs={'class': 'value'}).text
 
     return {'living_area': living_area, 'price': price}
+
+def main():
+    csv_columns = ['city', 'link', 'habitable_area', 'price']
+    sale_csv_file = 'huispedia.csv'
+    try:
+        with open(sale_csv_file, 'w') as f:
+            writer = csv.DictWriter(f, fieldnames=csv_columns)
+            writer.writeheader()
+            for k, v in get_huispedia_city_links().items():
+                pages = int(get_no_of_pages(v))
+                if pages > 0:
+                    for i in range(pages):
+                        houses = get_apartment_list('{0}/op_termijn/default_sort/kze-otb-ovb_status/list_view//{1}_p'.format(v, i))
+                        for each in houses:
+                            data = get_apartment_info(each)
+                            data['city'] = k
+                            data['link'] = each
+                            writer.writerow(data)
+
+    except Exception as e:
+        logger.info('Type error: ' + str(e))
+        logger.info(traceback.format_exc())
+    #         # time.sleep(2)
+
+
+print(get_apartment_info('https://huispedia.nl/amsterdam/1018tn/plantage-muidergracht/75-b'))
