@@ -12,6 +12,19 @@ import os
 import time
 import daiquiri
 import sys
+from lxml.html import fromstring
+
+def get_proxies():
+    url = 'https://free-proxy-list.net/'
+    response = requests.get(url)
+    parser = fromstring(response.text)
+    proxies = set()
+    for i in parser.xpath('//tbody/tr')[:10]:
+        if i.xpath('.//td[7][contains(text(),"yes")]'):
+            #Grabbing IP and corresponding PORT
+            proxy = ":".join([i.xpath('.//td[1]/text()')[0], i.xpath('.//td[2]/text()')[0]])
+            proxies.add(proxy)
+    return proxies
 
 daiquiri.setup(level=logging.INFO, outputs=(
     daiquiri.output.Stream(sys.stdout),
@@ -105,7 +118,7 @@ def get_apartment_list(link):
     property_list = []
     for each in search_results.findAll('li'):
         try:
-            property_list.append(each.find('a').get('href'))
+            property_list.append('https://huispedia.nl/zoeken' + each.find('a').get('href'))
         except AttributeError as e:
             pass
     return property_list
@@ -127,12 +140,15 @@ def get_no_of_pages(link):
     return no_of_pages
 
 def get_apartment_info(link):
-    main_page_soup = make_request(link)
-    price=main_page_soup.find('div', attrs={'class':'price-indication-main-container'}).span
-    living_area = main_page_soup.find('div', attrs={
-                                      'id': 'feature-big-woonoppervlak'}).find('div', attrs={'class': 'value'}).text
+    try:
+        main_page_soup = make_request(link)
+        price=main_page_soup.find('div', attrs={'class':'price-indication-main-container'}).span
+        living_area = main_page_soup.find('div', attrs={
+                                        'id': 'feature-big-woonoppervlak'}).find('div', attrs={'class': 'value'}).text
 
-    return {'living_area': living_area, 'price': price}
+        return {'living_area': living_area, 'price': price}
+    except AttributeError:
+        logger.error("Attribute not found")
 
 def main():
     csv_columns = ['city', 'link', 'habitable_area', 'price']
@@ -143,10 +159,12 @@ def main():
             writer.writeheader()
             for k, v in get_huispedia_city_links().items():
                 pages = int(get_no_of_pages(v))
+                print(pages)
                 if pages > 0:
                     for i in range(pages):
                         houses = get_apartment_list('{0}/op_termijn/default_sort/kze-otb-ovb_status/list_view//{1}_p'.format(v, i))
                         for each in houses:
+                            print(each)
                             data = get_apartment_info(each)
                             data['city'] = k
                             data['link'] = each
@@ -158,4 +176,10 @@ def main():
     #         # time.sleep(2)
 
 
-print(get_apartment_info('https://huispedia.nl/amsterdam/1018tn/plantage-muidergracht/75-b'))
+# print(get_apartment_info('https://huispedia.nl/amsterdam/1018tn/plantage-muidergracht/75-b'))
+# proxies = get_proxies()
+# print(proxies)
+
+if __name__ == "__main__":
+    print(get_apartment_info('https://huispedia.nl/amsterdam/1033pc/nageljongenstraat/151'))
+    
